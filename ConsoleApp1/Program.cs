@@ -7,21 +7,92 @@ namespace ConsoleApp1
     {
         static void Main(string[] args)
         {
-            var smallArray = new int[] { 1, 3, 6, 8, 9 };
-            var largeArray = new int[] { 2, 4, 5, 7, 11, 12 };
-            var search = new BinarySearch();
-            Console.WriteLine(search.TwoArray(smallArray, largeArray));
-
-            var sub = new SubString();
-            Console.WriteLine($"Max = {sub.LengthOfLongestSubstring("dvdf")}");
-            Console.WriteLine("Hello World!");
             MainAsync(args).GetAwaiter().GetResult();
         }
 
         static async Task MainAsync(string[] args)
         {
-            var aggregator = new Aggregator(Guid.NewGuid(), new Context());
-            var list = await bs.GetList();
+            Aggregator aggregator = null;
+            var router = new Router(Guid.NewGuid(), new ActorFactory(), new ActorInit() { Name = "Workload Actor" }, new Context() { Parent = aggregator });
+            aggregator = new Aggregator(Guid.NewGuid(), new Context(), router);
+            router.Context.Parent = aggregator;
+
+            aggregator.Recieve(new Workload()
+            {
+                delayTime = 500,
+                isFinished = false,
+                size = 1,
+                workId = 1
+            });
+
+            aggregator.Recieve(new Workload()
+            {
+                delayTime = 200,
+                isFinished = false,
+                size = 1,
+                workId = 2
+            });
+
+            aggregator.Recieve(new Workload()
+            {
+                delayTime = 500,
+                isFinished = false,
+                size = 1,
+                workId = 3
+            });
+
+            aggregator.Recieve(new Workload()
+            {
+                delayTime = 500,
+                isFinished = false,
+                size = 1,
+                workId = 4
+            });
+
+            aggregator.Recieve(new Workload()
+            {
+                delayTime = 500,
+                isFinished = false,
+                size = 1,
+                workId = 5
+            });
+
+            aggregator.Recieve(new Workload()
+            {
+                delayTime = 500,
+                isFinished = false,
+                size = 1,
+                workId = 6
+            });
+
+            aggregator.Recieve(new Workload()
+            {
+                delayTime = 500,
+                isFinished = false,
+                size = 1,
+                workId = 7
+            });
+
+            aggregator.Recieve(new Workload()
+            {
+                delayTime = 500,
+                isFinished = false,
+                size = 1,
+                workId = 8
+            });
+
+            aggregator.Recieve(new Workload()
+            {
+                delayTime = 500,
+                isFinished = false,
+                size = 1,
+                workId = 1
+            });
+
+
+            await Task.Delay(3000);
+
+            Console.WriteLine(aggregator.total);
         }
     }
 }

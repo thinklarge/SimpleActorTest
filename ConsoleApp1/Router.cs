@@ -1,27 +1,67 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
 namespace ConsoleApp1
 {
-    public class Workload
+    public struct Workload
     {
+        public int workId { get; set; }
 
+        public int size { get; set; }
+
+        public int delayTime { get; set; }
+
+        public bool isFinished { get; set; }
     }
 
     public class Aggregator : IActor
     {
+        private Dictionary<int, Workload> work;
+        public int total;
 
-        public Aggregator(Guid id, IContext context)
+        public Aggregator(Guid id, IContext context, IRouter router)
         {
             Id = id;
             Context = context;
+            Router = router;
+            this.work = new Dictionary<int, Workload>();
+        }
+
+        public void SetRouter(IRouter router)
+        {
+            this.Router = router;
         }
 
         public Guid Id { get; set; }
 
         public IContext Context { get; set; }
+
+        public IRouter Router { get; set; }
+
+        public void Recieve(Workload workload, Guid? workloadId = null)
+        {
+            if (workloadId == null)
+            {
+                this.work[workload.workId] = workload;
+                this.Router.Recieve(workload, this.Id);
+            }
+            else
+            {
+                if (!this.work[workload.workId].isFinished)
+                {
+                    Console.WriteLine($"Work not finished {workload.workId} {workloadId}");
+                    this.work[workload.workId] = workload;
+                    total += workload.size * workload.workId;
+                }
+                else
+                {
+                    Console.WriteLine($"Work finished {workload.workId} {workloadId}");
+                }
+            }                             
+        }
     }
 
     public class Context : IContext
@@ -38,13 +78,13 @@ namespace ConsoleApp1
         IRouter Router { get; set; }
     }
 
-    public class Router : IRouter,  IActor
+    public class Router : IRouter
     {
         private readonly IActorFactory<ActorInit> actorFactory;
 
         private Queue<IActor> emptyActors;
 
-        private Queue<int> workloads;
+        private Queue<Workload> workloads;
 
         public Guid Id { get; set; }
 
@@ -58,16 +98,40 @@ namespace ConsoleApp1
             this.Context = context;
             this.actors = new Dictionary<Guid, IActor>();
             this.emptyActors = new Queue<IActor>();
-            this.workloads = new Queue<int>();
+            this.workloads = new Queue<Workload>();
+            this.AddActor();
+            this.AddActor();
+            this.AddActor();
+            this.AddActor();
         }
 
         public ActorInit Config { get; }
 
         public IContext Context { get; set; }
 
-        public IActor CreateActor()
+        private IActor CreateActor()
         {
-            return this.actorFactory.Create(this.Config, this.Context.Parent, this.Context.Router);
+            return this.actorFactory.Create(this.Config, this.Context.Parent, this);
+        }
+
+        public void AddActor()
+        {
+            var actor = this.CreateActor();
+            actors.Add(actor.Id, actor);
+            emptyActors.Enqueue(actor);
+        }
+
+        public void RemoveActor()
+        {
+            if (emptyActors.Any())
+            {
+                var actor = emptyActors.Dequeue();
+                actors.Remove(actor.Id);
+            }
+            else
+            {
+                actors.Remove(actors.First().Key);
+            }
         }
 
         public void Setup()
@@ -80,29 +144,36 @@ namespace ConsoleApp1
             }
         }
 
-        public void UpdateWorkload(Guid id, int queueSize)
+        public void UpdateWorkload(Workload workload, Guid id)
         {
+            this.Context.Parent.Recieve(workload, id);
             if (!this.actors.ContainsKey(id))
             {
-                throw new IndexOutOfRangeException($"Key of '{id}' not found on Router '{this.Id}'.");
+                return;
             }
 
             if (this.workloads.Count > 0)
             {
-                this.actors[id].ProcessWorkload(queueSize, this.Id);
+                var work = workloads.Dequeue();                
+                this.actors[id].Recieve(work, this.Id);
+
+                if (workload.workId % 4 == 0) // Artificially remove a node
+                {
+                    this.RemoveActor();
+                }
                 return;
             }
 
             this.emptyActors.Enqueue(this.actors[id]);
         }
 
-        public void ScheduleWork(int workloadSize)
+        public void Recieve(Workload workloadSize, Guid? workloadId = null)
         {
-            var actor = this.emptyActors.Dequeue();
 
-            if (actor == null)
+            if (this.emptyActors.Any())
             {
-                actor.ProcessWorkload(workloadSize, actor.Id);
+                var actor = this.emptyActors.Dequeue();
+                actor.Recieve(workloadSize, actor.Id);
             }
             else
             {
@@ -111,9 +182,9 @@ namespace ConsoleApp1
         }
     }
 
-    public interface IRouter
+    public interface IRouter : IActor
     {
-        void UpdateWorkload(Guid id, int queueSize);
+        void UpdateWorkload(Workload workload, Guid id);
     }
 
     public interface IActorFactory<T>
@@ -148,28 +219,28 @@ namespace ConsoleApp1
 
     public class NamedActor : IActor
     {
-        private Queue<Task> tasks;
+        private Queue<Func<Task>> tasks;
         public NamedActor(Guid id, string name)
         {
             Id = id;
             Name = name;
-            this.tasks = new Queue<Task>();
+            this.tasks = new Queue<Func<Task>>();
         }
 
-        public async Task ProcessWorkload(int workloadSize, Guid workloadId)
+        public void Recieve(Workload workloadSize, Guid? workerId = null)
         {
             tasks.Enqueue(
-                new Task(
-                    async () =>
+                   async () =>
                    {
-                       Console.WriteLine("starting Process");
-                       await Task.Delay(workloadSize);
+                       Console.WriteLine($"worker - {this.Id} workloadId - {workloadSize.workId}");
+                       await Task.Delay(workloadSize.delayTime);
+                       workloadSize.isFinished = true;
 
-                       this.Context.Router.UpdateWorkload(workloadId, 0);
-                   }));
+                       this.Context.Router.UpdateWorkload(workloadSize, this.Id);
+                   });
 
 
-            await ExecuteNext(); // TODO: Look into whether or not this will run an infinite chain. 
+            Task.Run(async () => await ExecuteNext()); // TODO: Look into whether or not this will run an infinite chain. 
         }
 
         private async Task ExecuteNext()
@@ -177,11 +248,9 @@ namespace ConsoleApp1
             if (tasks.Count > 0)
             {
                 var task = tasks.Dequeue();
-                await task;
+                await task();
                 await ExecuteNext();
             }
-
-            this.Context.Router.UpdateWorkload(this.Id, 0);
         }
 
         public string Name { get; }

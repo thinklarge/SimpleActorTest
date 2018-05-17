@@ -43,7 +43,6 @@ namespace ConsoleApp1
             var hash = new HashSet<char>();
             var queue = new Queue<char>();
             int max = 0;
-            "avabbavaacdsdmnghjy"
 
             foreach (var ch in s)
             {

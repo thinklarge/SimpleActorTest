@@ -9,6 +9,6 @@ namespace ConsoleApp1
 
         IContext Context { get; set; }
 
-        Task ProcessWorkload(int workloadSize, Guid workloadId);
+        void Recieve(Workload workloadSize, Guid? workloadId = null);
     }
 }
